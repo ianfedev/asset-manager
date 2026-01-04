@@ -12,4 +12,6 @@ type Config struct {
 	UseSSL bool `mapstructure:"use_ssl" default:"false"`
 	// Bucket is the name of the bucket to store assets in.
 	Bucket string `mapstructure:"bucket" default:"assets"`
+	// Region is the location of the bucket (e.g., us-east-1).
+	Region string `mapstructure:"region" default:""`
 }

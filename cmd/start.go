@@ -10,8 +10,10 @@ import (
 	"asset-manager/core/config"
 	"asset-manager/core/loader"
 	"asset-manager/core/logger"
+	"asset-manager/core/storage"
 	"asset-manager/core/middleware/auth"
 	"asset-manager/core/middleware/rayid"
+	"asset-manager/feature/integrity"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/spf13/cobra"
@@ -43,9 +45,17 @@ var startCmd = &cobra.Command{
 			DisableStartupMessage: true, // We will log our own startup message
 		})
 
+		// 3. Initialize Storage
+		store, err := storage.NewClient(cfg.Storage)
+		if err != nil {
+			logg.Fatal("Failed to create storage client", zap.Error(err))
+		}
+
 		// 4. Initialize Feature Loader
 		mgr := loader.NewManager()
-		// TODO: Register features here e.g. mgr.Register(NewMyFeature())
+		
+		// Register Features
+		mgr.Register(integrity.NewFeature(store, cfg.Storage.Bucket, logg))
 
 		// Middleware Registration
 		// 1. RayID (Must be first to trace everything)

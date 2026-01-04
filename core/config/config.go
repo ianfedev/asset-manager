@@ -8,6 +8,7 @@ import (
 	"asset-manager/core/server"
 	"asset-manager/core/storage"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -24,25 +25,24 @@ type Config struct {
 
 // LoadConfig loads configuration from environment variables and .env file.
 func LoadConfig(path string) (*Config, error) {
+	// 1. Load .env file if it exists
+	// We construct the path to .env
+	envPath := path + "/.env"
+	if path == "." {
+		envPath = ".env"
+	}
+	
+	// Ignore error if file doesn't exist (e.g. production)
+	_ = godotenv.Overload(envPath)
+
 	v := viper.New()
 
 	// Recursively parse struct tags to set default values
 	bindValues(v, Config{}, "")
 
-	// Read from .env file if it exists
-	v.AddConfigPath(path)
-	v.SetConfigName(".env")
-	v.SetConfigType("env")
-
 	// Map environment variables to nested keys (e.g. SERVER_PORT -> server.port)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
-		}
-	}
 
 	var config Config
 	if err := v.Unmarshal(&config); err != nil {

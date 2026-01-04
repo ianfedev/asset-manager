@@ -1,0 +1,37 @@
+package integrity
+
+import (
+	"asset-manager/core/storage"
+	"github.com/gofiber/fiber/v2"
+	"go.uber.org/zap"
+)
+
+// Feature implements the loader.Feature interface.
+type Feature struct {
+	service *Service
+	handler *Handler
+}
+
+// NewFeature creates a new Integrity feature.
+func NewFeature(client storage.Client, bucket string, logger *zap.Logger) *Feature {
+	svc := NewService(client, bucket, logger)
+	h := NewHandler(svc)
+	return &Feature{service: svc, handler: h}
+}
+
+// Name returns the name of the feature.
+func (f *Feature) Name() string {
+	return "integrity"
+}
+
+// IsEnabled checks if the feature is enabled.
+// Currently always enabled.
+func (f *Feature) IsEnabled() bool {
+	return true
+}
+
+// Load registers the feature's routes.
+func (f *Feature) Load(app fiber.Router) error {
+	f.handler.RegisterRoutes(app)
+	return nil
+}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -62,6 +63,23 @@ func TestLoadConfig(t *testing.T) {
 	// Check defaults
 	assert.Equal(t, "8080", config.Server.Port)
 	assert.Equal(t, "minioadmin", config.Storage.AccessKey)
+	assert.Equal(t, "", config.Storage.Region)
 	assert.Equal(t, "info", config.Log.Level)
 	assert.Equal(t, "json", config.Log.Format)
+}
+
+func TestEnvOverridesDefaults(t *testing.T) {
+	// 1. Set Environment Variable
+	key := "STORAGE_ENDPOINT"
+	val := "custom-endpoint:9000"
+	os.Setenv(key, val)
+	defer os.Unsetenv(key)
+
+	// 2. Load Config
+	config, err := LoadConfig(".")
+	assert.NoError(t, err)
+
+	// 3. Verify Override
+	// Expect storage.endpoint to be overridden
+	assert.Equal(t, val, config.Storage.Endpoint, "Environment variable should override default value")
 }

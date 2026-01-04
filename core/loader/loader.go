@@ -10,7 +10,7 @@ import (
 type FeatureLoader interface {
 	Name() string
 	IsEnabled() bool
-	Load(app *fiber.App) error
+	Load(app fiber.Router) error
 }
 
 // Manager handles the registration and loading of features.
@@ -31,7 +31,7 @@ func (m *Manager) Register(l FeatureLoader) {
 }
 
 // LoadAll iterates through all registered loaders and loads them if enabled.
-func (m *Manager) LoadAll(app *fiber.App) error {
+func (m *Manager) LoadAll(app fiber.Router) error {
 	for _, l := range m.loaders {
 		if l.IsEnabled() {
 			log.Printf("Loading feature: %s", l.Name())
