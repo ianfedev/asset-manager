@@ -1,0 +1,91 @@
+package config
+
+import (
+	"reflect"
+	"strings"
+
+	"asset-manager/core/logger"
+	"asset-manager/core/server"
+	"asset-manager/core/storage"
+
+	"github.com/spf13/viper"
+)
+
+// Config holds all configuration for the application.
+// It is divided into partial configurations for better modularity.
+type Config struct {
+	// Server holds configuration for the HTTP server.
+	Server server.Config `mapstructure:"server"`
+	// Storage holds configuration for the object storage (e.g., S3, Minio).
+	Storage storage.Config `mapstructure:"storage"`
+	// Log holds configuration for the logger.
+	Log logger.Config `mapstructure:"log"`
+}
+
+// LoadConfig loads configuration from environment variables and .env file.
+func LoadConfig(path string) (*Config, error) {
+	v := viper.New()
+
+	// Recursively parse struct tags to set default values
+	bindValues(v, Config{}, "")
+
+	// Read from .env file if it exists
+	v.AddConfigPath(path)
+	v.SetConfigName(".env")
+	v.SetConfigType("env")
+
+	// Map environment variables to nested keys (e.g. SERVER_PORT -> server.port)
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, err
+		}
+	}
+
+	var config Config
+	if err := v.Unmarshal(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+// bindValues uses reflection to iterate over the struct and set default values in Viper
+// based on the 'default' and 'mapstructure' tags.
+func bindValues(v *viper.Viper, iface interface{}, prefix string) {
+	t := reflect.TypeOf(iface)
+
+	// If it's a pointer, get the element
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		tag := field.Tag.Get("mapstructure")
+		
+		// Skip if no tag
+		if tag == "" {
+			continue
+		}
+
+		// Build the key
+		key := tag
+		if prefix != "" {
+			key = prefix + "." + tag
+		}
+
+		// If it's a nested struct, recurse
+		if field.Type.Kind() == reflect.Struct {
+			bindValues(v, reflect.New(field.Type).Elem().Interface(), key)
+			continue
+		}
+
+		defaultValue := field.Tag.Get("default")
+		if defaultValue != "" {
+			v.SetDefault(key, defaultValue)
+		}
+	}
+}
