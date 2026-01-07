@@ -87,8 +87,7 @@ func bindValues(v *viper.Viper, iface interface{}, prefix string) {
 		}
 
 		defaultValue := field.Tag.Get("default")
-		if defaultValue != "" {
-			v.SetDefault(key, defaultValue)
-		}
+		// Always set default (even if empty) to register the key for AutomaticEnv
+		v.SetDefault(key, defaultValue)
 	}
 }
