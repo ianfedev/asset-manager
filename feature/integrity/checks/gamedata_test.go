@@ -45,4 +45,22 @@ func TestCheckGameData(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, missing, 0)
 	})
+
+	t.Run("Bucket Missing", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		mockClient.On("BucketExists", mock.Anything, "assets").Return(false, nil)
+
+		_, err := CheckGameData(context.Background(), mockClient, "assets")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "does not exist")
+	})
+
+	t.Run("Bucket Check Error", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		mockClient.On("BucketExists", mock.Anything, "assets").Return(false, assert.AnError)
+
+		_, err := CheckGameData(context.Background(), mockClient, "assets")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to check bucket existence")
+	})
 }

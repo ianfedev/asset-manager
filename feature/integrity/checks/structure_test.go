@@ -51,15 +51,34 @@ func TestCheckStructure(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, missing, 0)
 	})
+	t.Run("Bucket Check Error", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		mockClient.On("BucketExists", mock.Anything, "assets").Return(false, assert.AnError)
+
+		_, err := CheckStructure(context.Background(), mockClient, "assets")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to check bucket existence")
+	})
 }
 
 func TestFixStructure(t *testing.T) {
 	logger := zap.NewNop()
-	mockClient := new(mocks.Client)
 
-	mockClient.On("PutObject", mock.Anything, "assets", mock.Anything, mock.Anything, int64(0), mock.Anything).Return(minio.UploadInfo{}, nil)
+	t.Run("Success", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		mockClient.On("PutObject", mock.Anything, "assets", mock.Anything, mock.Anything, int64(0), mock.Anything).Return(minio.UploadInfo{}, nil)
 
-	err := FixStructure(context.Background(), mockClient, "assets", logger, []string{"bundled"})
-	assert.NoError(t, err)
-	mockClient.AssertNumberOfCalls(t, "PutObject", 1)
+		err := FixStructure(context.Background(), mockClient, "assets", logger, []string{"bundled"})
+		assert.NoError(t, err)
+		mockClient.AssertNumberOfCalls(t, "PutObject", 1)
+	})
+
+	t.Run("PutObject Error", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		mockClient.On("PutObject", mock.Anything, "assets", mock.Anything, mock.Anything, int64(0), mock.Anything).Return(minio.UploadInfo{}, assert.AnError)
+
+		err := FixStructure(context.Background(), mockClient, "assets", logger, []string{"bundled"})
+		assert.Error(t, err)
+		assert.Equal(t, assert.AnError, err)
+	})
 }

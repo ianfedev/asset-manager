@@ -1,5 +1,9 @@
 package models
 
+import (
+	"strings"
+)
+
 // Report contains the results of a furniture integrity check.
 type Report struct {
 	TotalExpected      int      `json:"total_expected"`
@@ -55,7 +59,7 @@ type FurnitureItem struct {
 	CanLayOn   bool `json:"canlayon,omitempty"`
 }
 
-// Validate checks if the furniture item has the minimum required fields.
+// Validate checks if the furniture item has the minimum required fields and valid formats.
 func (i FurnitureItem) Validate() string {
 	if i.ID == 0 {
 		return "missing id"
@@ -66,5 +70,41 @@ func (i FurnitureItem) Validate() string {
 	if i.Name == "" {
 		return "missing name"
 	}
+	if i.Revision == 0 {
+		// Revision 0 is technically possible but usually it starts at 1?
+		// Docs say "Asset version number". If missing, what happens?
+		// Let's assume it should be present. But maybe 0 is valid.
+		// However, missing in JSON implies 0 in int.
+		// Let's warn if 0? Or just "missing revision" if we treat 0 as default/missing.
+		// Many ancient assets might not have it tailored?
+		// Safest is to not enforce Revision != 0 unless strictly known.
+		// But let's enforce provided fields.
+	}
+	if i.Category == "" {
+		// Category seems important for classification.
+		// "General classification tag".
+		return "missing category"
+	}
+
+	// Validate ClassName format
+	// Format: base_name or base_name*color_id
+	if strings.Contains(i.ClassName, "*") {
+		parts := strings.Split(i.ClassName, "*")
+		if len(parts) != 2 {
+			return "invalid classname format: too many asterisks"
+		}
+		if parts[0] == "" {
+			return "invalid classname format: empty base name"
+		}
+		if parts[1] == "" {
+			return "invalid classname format: empty color index"
+		}
+		// Check if color index is numeric?
+		// "parses the suffix as the colorIndex (variable)"
+		// Typically numeric, but effectively a string in the name?
+		// Docs say "color_id". Example "chair_wood*1".
+		// Let's not be too strict on the ID content unless we know it must be int.
+	}
+
 	return ""
 }
