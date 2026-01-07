@@ -1,4 +1,4 @@
-package checks
+package furniture
 
 import (
 	"context"
@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"asset-manager/core/storage"
-	"asset-manager/feature/integrity/models"
+	"asset-manager/feature/furniture/models"
 
 	"github.com/minio/minio-go/v7"
 )
 
-// CheckFurniture performs a high-performance integrity check of bundled furniture.
-func CheckFurniture(ctx context.Context, client storage.Client, bucket string) (*models.FurnitureReport, error) {
+// CheckIntegrity performs a high-performance integrity check of bundled furniture.
+func CheckIntegrity(ctx context.Context, client storage.Client, bucket string) (*models.Report, error) {
 	startTime := time.Now()
 
 	furniData, err := loadFurnitureData(ctx, client, bucket)
@@ -24,7 +24,7 @@ func CheckFurniture(ctx context.Context, client storage.Client, bucket string) (
 		return nil, fmt.Errorf("failed to load FurnitureData.json: %w", err)
 	}
 
-	expectedFiles := getExpectedFiles(furniData)
+	expectedFiles, malformedAssets := getExpectedFilesAndValidate(furniData)
 
 	actualFiles, err := getActualFiles(ctx, client, bucket)
 	if err != nil {
@@ -32,6 +32,7 @@ func CheckFurniture(ctx context.Context, client storage.Client, bucket string) (
 	}
 
 	report := compareFurniture(expectedFiles, actualFiles)
+	report.MalformedAssets = malformedAssets
 	report.GeneratedAt = time.Now().Format(time.RFC3339)
 	report.ExecutionTime = time.Since(startTime).String()
 
@@ -68,11 +69,23 @@ func loadFurnitureData(ctx context.Context, client storage.Client, bucket string
 	return &fd, nil
 }
 
-func getExpectedFiles(fd *models.FurnitureData) map[string]bool {
+func getExpectedFilesAndValidate(fd *models.FurnitureData) (map[string]bool, []string) {
 	expected := make(map[string]bool)
+	var malformed []string
 
 	processItems := func(items []models.FurnitureItem) {
 		for _, item := range items {
+			if msg := item.Validate(); msg != "" {
+				// Identify item by ID if possible, else index?
+				// Using ID if > 0, else just "Unknown item"
+				idStr := fmt.Sprintf("%d", item.ID)
+				if item.ID == 0 {
+					idStr = "?"
+				}
+				malformed = append(malformed, fmt.Sprintf("ID %s: %s", idStr, msg))
+				continue
+			}
+
 			name := item.ClassName
 			if idx := strings.Index(name, "*"); idx != -1 {
 				name = name[:idx]
@@ -84,7 +97,7 @@ func getExpectedFiles(fd *models.FurnitureData) map[string]bool {
 	processItems(fd.RoomItemTypes.FurniType)
 	processItems(fd.WallItemTypes.FurniType)
 
-	return expected
+	return expected, malformed
 }
 
 func getActualFiles(ctx context.Context, client storage.Client, bucket string) (map[string]bool, error) {
@@ -94,10 +107,6 @@ func getActualFiles(ctx context.Context, client storage.Client, bucket string) (
 
 	// Prefixes to scan: a-z, A-Z, 0-9, _, and -
 	prefixes := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
-
-	// Use a semaphore to limit concurrency if needed, but 37 goroutines is fine.
-	// Actually, we can use a channel to collect results to avoid mutex contention if we want,
-	// but mutex is simpler and fine for IO bound.
 
 	errCh := make(chan error, 1)
 
@@ -131,7 +140,6 @@ func getActualFiles(ctx context.Context, client storage.Client, bucket string) (
 				}
 
 				filename := strings.TrimPrefix(obj.Key, "bundled/furniture/")
-				// Simple validation to ensure we caught valid files
 				if filename == "" || strings.HasSuffix(filename, "/") {
 					continue
 				}
@@ -154,12 +162,13 @@ func getActualFiles(ctx context.Context, client storage.Client, bucket string) (
 	return actual, nil
 }
 
-func compareFurniture(expected map[string]bool, actual map[string]bool) *models.FurnitureReport {
-	report := &models.FurnitureReport{
+func compareFurniture(expected map[string]bool, actual map[string]bool) *models.Report {
+	report := &models.Report{
 		TotalExpected:      len(expected),
 		TotalFound:         len(actual),
 		MissingAssets:      make([]string, 0),
 		UnregisteredAssets: make([]string, 0),
+		MalformedAssets:    make([]string, 0),
 	}
 
 	// Check missing (In Furnidata but not in Storage)

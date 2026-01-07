@@ -196,6 +196,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 			zap.Int("Found", report.TotalFound),
 			zap.Int("MissingAssets", len(report.MissingAssets)),
 			zap.Int("UnregisteredAssets", len(report.UnregisteredAssets)),
+			zap.Int("MalformedAssets", len(report.MalformedAssets)),
 			zap.String("ExecutionTime", report.ExecutionTime),
 		)
 	}

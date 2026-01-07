@@ -6,7 +6,8 @@ import (
 	"asset-manager/core/storage"
 	"asset-manager/feature/integrity/checks"
 
-	"asset-manager/feature/integrity/models"
+	"asset-manager/feature/furniture"
+	"asset-manager/feature/furniture/models"
 
 	"go.uber.org/zap"
 )
@@ -53,6 +54,6 @@ func (s *Service) FixBundled(ctx context.Context, missing []string) error {
 }
 
 // CheckFurniture performs an integrity check on furniture assets.
-func (s *Service) CheckFurniture(ctx context.Context) (*models.FurnitureReport, error) {
-	return checks.CheckFurniture(ctx, s.client, s.bucket)
+func (s *Service) CheckFurniture(ctx context.Context) (*models.Report, error) {
+	return furniture.CheckIntegrity(ctx, s.client, s.bucket)
 }
