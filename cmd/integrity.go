@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"asset-manager/core/config"
 	"asset-manager/core/logger"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 )
 
 var fixFlag bool
@@ -22,7 +25,11 @@ var integrityCmd = &cobra.Command{
 	Short: "Perform integrity checks on the asset storage",
 	Long:  `Checks if the storage bucket has the required folder structure and other integrity requirements.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		runIntegrityChecks(cmd.Context(), false)
+		if len(args) > 0 {
+			cmd.Help()
+			return
+		}
+		runIntegrityChecks(cmd.Context(), false, false, false, false)
 	},
 }
 
@@ -31,68 +38,102 @@ var structureCmd = &cobra.Command{
 	Use:   "structure",
 	Short: "Check and fix folder structure",
 	Run: func(cmd *cobra.Command, args []string) {
-		runIntegrityChecks(cmd.Context(), true)
+		runIntegrityChecks(cmd.Context(), true, false, false, false)
+	},
+}
+
+// bundleCmd represents the integrity bundle command
+var bundleCmd = &cobra.Command{
+	Use:   "bundle",
+	Short: "Check and fix bundled asset folders",
+	Run: func(cmd *cobra.Command, args []string) {
+		runIntegrityChecks(cmd.Context(), false, true, false, false)
+	},
+}
+
+// gamedataCmd represents the integrity gamedata command
+var gamedataCmd = &cobra.Command{
+	Use:   "gamedata",
+	Short: "Check gamedata files",
+	Run: func(cmd *cobra.Command, args []string) {
+		runIntegrityChecks(cmd.Context(), false, false, true, false)
+	},
+}
+
+// furnitureCmd represents the integrity furniture command
+var furnitureCmd = &cobra.Command{
+	Use:   "furniture",
+	Short: "Check integrity of bundled furniture",
+	Run: func(cmd *cobra.Command, args []string) {
+		runIntegrityChecks(cmd.Context(), false, false, false, true)
 	},
 }
 
 func init() {
 	RootCmd.AddCommand(integrityCmd)
 	integrityCmd.AddCommand(structureCmd)
+	integrityCmd.AddCommand(bundleCmd)
+	integrityCmd.AddCommand(gamedataCmd)
+	integrityCmd.AddCommand(furnitureCmd)
 
 	structureCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
+	bundleCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
 }
 
-func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
-	// 1. Load Config
+func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGameData, onlyFurniture bool) {
 	cfg, err := config.LoadConfig(".")
 	if err != nil {
 		fmt.Printf("Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 2. Initialize Logger
 	logg, err := logger.New(&cfg.Log)
 	if err != nil {
 		fmt.Printf("Failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 3. Initialize Storage
 	store, err := storage.NewClient(cfg.Storage)
 	if err != nil {
 		logg.Fatal("Failed to create storage client", zap.Error(err))
 	}
 
-	// 4. Initialize Integrity Service
 	svc := integrity.NewService(store, cfg.Storage.Bucket, logg)
+
+	runAll := !onlyStructure && !onlyBundle && !onlyGameData && !onlyFurniture
+
+	runStructure := onlyStructure || runAll
+	runGameData := onlyGameData || runAll
+	runBundle := onlyBundle || runAll
+	runFurniture := onlyFurniture
 
 	// Run Checks
 
-	// 1. Structure Check
-	logg.Info("Checking folder structure...")
-	missingStructure, err := svc.CheckStructure(ctx)
-	if err != nil {
-		logg.Fatal("Structure check failed", zap.Error(err))
-	}
+	if runStructure {
+		logg.Info("Checking folder structure...")
+		missingStructure, err := svc.CheckStructure(ctx)
+		if err != nil {
+			logg.Fatal("Structure check failed", zap.Error(err))
+		}
 
-	if len(missingStructure) == 0 {
-		logg.Info("Structure is intact.")
-	} else {
-		logg.Warn("Missing folders detected", zap.Strings("missing", missingStructure))
+		if len(missingStructure) == 0 {
+			logg.Info("Structure is intact.")
+		} else {
+			logg.Warn("Missing folders detected", zap.Strings("missing", missingStructure))
 
-		if onlyStructure && fixFlag {
-			logg.Info("Fixing missing folders...")
-			if err := svc.FixStructure(ctx, missingStructure); err != nil {
-				logg.Fatal("Failed to fix structure", zap.Error(err))
+			if onlyStructure && fixFlag {
+				logg.Info("Fixing missing folders...")
+				if err := svc.FixStructure(ctx, missingStructure); err != nil {
+					logg.Fatal("Failed to fix structure", zap.Error(err))
+				}
+				logg.Info("Structure fixed successfully.")
+			} else if onlyStructure {
+				logg.Info("Run with --fix to create missing folders.")
 			}
-			logg.Info("Structure fixed successfully.")
-		} else if onlyStructure {
-			logg.Info("Run with --fix to create missing folders.")
 		}
 	}
 
-	// 2. GameData Check (Only if running full integrity check)
-	if !onlyStructure {
+	if runGameData {
 		logg.Info("Checking gamedata files...")
 		missingGameData, err := svc.CheckGameData(ctx)
 		if err != nil {
@@ -104,5 +145,58 @@ func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
 		} else {
 			logg.Warn("Missing gamedata files detected", zap.Strings("missing", missingGameData))
 		}
+	}
+
+	if runBundle {
+		logg.Info("Checking bundled folders...")
+		missingBundled, err := svc.CheckBundled(ctx)
+		if err != nil {
+			logg.Fatal("Bundle check failed", zap.Error(err))
+		}
+
+		if len(missingBundled) == 0 {
+			logg.Info("Bundled folders are intact.")
+		} else {
+			logg.Warn("Missing bundled folders detected", zap.Strings("missing", missingBundled))
+
+			if onlyBundle && fixFlag {
+				logg.Info("Fixing missing bundled folders...")
+				if err := svc.FixBundled(ctx, missingBundled); err != nil {
+					logg.Fatal("Failed to fix bundled folders", zap.Error(err))
+				}
+				logg.Info("Bundled folders fixed successfully.")
+			} else if onlyBundle {
+				logg.Info("Run with --fix to create missing bundled folders.")
+			}
+		}
+	}
+
+	if runFurniture {
+		if err := unix.Access(".", unix.W_OK); err != nil {
+			logg.Fatal("Current directory is not writable. Cannot save integrity report.", zap.Error(err))
+		}
+
+		logg.Info("Checking furniture assets (this might take a while)...")
+		report, err := svc.CheckFurniture(ctx)
+		if err != nil {
+			logg.Fatal("Furniture check failed", zap.Error(err))
+		}
+
+		// Save Report
+		filename := fmt.Sprintf("integrity_furniture_%d.json", time.Now().Unix())
+		data, _ := json.MarshalIndent(report, "", "  ")
+		if err := os.WriteFile(filename, data, 0644); err != nil {
+			logg.Error("Failed to save integrity report", zap.Error(err))
+		} else {
+			logg.Info("Integrity report saved", zap.String("file", filename))
+		}
+
+		logg.Info("Furniture Integrity Report",
+			zap.Int("Expected", report.TotalExpected),
+			zap.Int("Found", report.TotalFound),
+			zap.Int("MissingAssets", len(report.MissingAssets)),
+			zap.Int("UnregisteredAssets", len(report.UnregisteredAssets)),
+			zap.String("ExecutionTime", report.ExecutionTime),
+		)
 	}
 }

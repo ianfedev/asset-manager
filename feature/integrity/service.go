@@ -6,6 +6,8 @@ import (
 	"asset-manager/core/storage"
 	"asset-manager/feature/integrity/checks"
 
+	"asset-manager/feature/integrity/models"
+
 	"go.uber.org/zap"
 )
 
@@ -38,4 +40,19 @@ func (s *Service) FixStructure(ctx context.Context, missing []string) error {
 // CheckGameData returns a list of missing files in the gamedata folder.
 func (s *Service) CheckGameData(ctx context.Context) ([]string, error) {
 	return checks.CheckGameData(ctx, s.client, s.bucket)
+}
+
+// CheckBundled returns a list of missing bundled folders.
+func (s *Service) CheckBundled(ctx context.Context) ([]string, error) {
+	return checks.CheckBundled(ctx, s.client, s.bucket)
+}
+
+// FixBundled creates the missing bundled folders.
+func (s *Service) FixBundled(ctx context.Context, missing []string) error {
+	return checks.FixBundled(ctx, s.client, s.bucket, s.logger, missing)
+}
+
+// CheckFurniture performs an integrity check on furniture assets.
+func (s *Service) CheckFurniture(ctx context.Context) (*models.FurnitureReport, error) {
+	return checks.CheckFurniture(ctx, s.client, s.bucket)
 }

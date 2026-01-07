@@ -2,6 +2,7 @@ package integrity
 
 import (
 	"asset-manager/core/logger"
+
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
@@ -21,6 +22,7 @@ func (h *Handler) RegisterRoutes(app fiber.Router) {
 	group := app.Group("/integrity")
 	group.Get("/", h.HandleIntegrityCheck)
 	group.Get("/structure", h.HandleStructureCheck)
+	group.Get("/furniture", h.HandleFurnitureCheck)
 }
 
 // HandleIntegrityCheck triggers all integrity checks.
@@ -28,7 +30,8 @@ func (h *Handler) HandleIntegrityCheck(c *fiber.Ctx) error {
 	l := logger.WithRayID(h.service.logger, c)
 	l.Info("Triggering all integrity checks")
 
-	// Currently only structure check exists
+	// Currently only structure check exists in this handler.
+	// Users should use specific endpoints for heavier checks.
 	missing, err := h.service.CheckStructure(c.Context())
 	if err != nil {
 		l.Error("Structure check failed", zap.Error(err))
@@ -59,7 +62,7 @@ func (h *Handler) HandleStructureCheck(c *fiber.Ctx) error {
 
 	if len(missing) > 0 {
 		l.Warn("Missing folders detected", zap.Strings("missing", missing))
-		
+
 		if fix {
 			l.Info("Attempting to fix missing folders")
 			if err := h.service.FixStructure(c.Context(), missing); err != nil {
@@ -69,7 +72,6 @@ func (h *Handler) HandleStructureCheck(c *fiber.Ctx) error {
 					"missing": missing,
 				})
 			}
-			// Re-check? Or just verify logic? Assuming success.
 			return c.JSON(fiber.Map{
 				"status": "fixed",
 				"fixed":  missing,
@@ -81,4 +83,24 @@ func (h *Handler) HandleStructureCheck(c *fiber.Ctx) error {
 		"status":  "checked",
 		"missing": missing,
 	})
+}
+
+// HandleFurnitureCheck checks integrity of bundled furniture assets.
+func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {
+	l := logger.WithRayID(h.service.logger, c)
+	l.Info("Starting furniture integrity check")
+
+	report, err := h.service.CheckFurniture(c.Context())
+	if err != nil {
+		l.Error("Furniture check failed", zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	l.Info("Furniture check completed",
+		zap.Int("expected", report.TotalExpected),
+		zap.Int("found", report.TotalFound))
+
+	return c.JSON(report)
 }

@@ -12,33 +12,24 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestCheckStructure(t *testing.T) {
-	t.Run("Bucket Missing", func(t *testing.T) {
-		mockClient := new(mocks.Client)
-		mockClient.On("BucketExists", mock.Anything, "assets").Return(false, nil)
-
-		_, err := CheckStructure(context.Background(), mockClient, "assets")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "does not exist")
-	})
-
-	t.Run("All Missing", func(t *testing.T) {
+func TestCheckBundled(t *testing.T) {
+	t.Run("Bundled All Missing", func(t *testing.T) {
 		mockClient := new(mocks.Client)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(true, nil)
 		ch := make(chan minio.ObjectInfo)
 		close(ch)
 		mockClient.On("ListObjects", mock.Anything, "assets", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
 
-		missing, err := CheckStructure(context.Background(), mockClient, "assets")
+		missing, err := CheckBundled(context.Background(), mockClient, "assets")
 		assert.NoError(t, err)
-		assert.Len(t, missing, len(RequiredFolders))
+		assert.Len(t, missing, len(RequiredBundledFolders))
 	})
 
-	t.Run("All Present", func(t *testing.T) {
+	t.Run("Bundled All Present", func(t *testing.T) {
 		mockClient := new(mocks.Client)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(true, nil)
 
-		for _, folder := range RequiredFolders {
+		for _, folder := range RequiredBundledFolders {
 			ch := make(chan minio.ObjectInfo, 1)
 			ch <- minio.ObjectInfo{Key: folder + "/"}
 			close(ch)
@@ -47,19 +38,19 @@ func TestCheckStructure(t *testing.T) {
 			})).Return((<-chan minio.ObjectInfo)(ch))
 		}
 
-		missing, err := CheckStructure(context.Background(), mockClient, "assets")
+		missing, err := CheckBundled(context.Background(), mockClient, "assets")
 		assert.NoError(t, err)
 		assert.Len(t, missing, 0)
 	})
 }
 
-func TestFixStructure(t *testing.T) {
+func TestFixBundled(t *testing.T) {
 	logger := zap.NewNop()
 	mockClient := new(mocks.Client)
 
 	mockClient.On("PutObject", mock.Anything, "assets", mock.Anything, mock.Anything, int64(0), mock.Anything).Return(minio.UploadInfo{}, nil)
 
-	err := FixStructure(context.Background(), mockClient, "assets", logger, []string{"bundled"})
+	err := FixBundled(context.Background(), mockClient, "assets", logger, []string{"bundled/effect"})
 	assert.NoError(t, err)
 	mockClient.AssertNumberOfCalls(t, "PutObject", 1)
 }

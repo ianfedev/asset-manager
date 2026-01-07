@@ -18,12 +18,14 @@ type Client interface {
 	MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error
 	// PutObject uploads an object.
 	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) (minio.UploadInfo, error)
+	// GetObject downloads an object.
+	GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (io.ReadCloser, error)
 	// ListObjects lists objects in a bucket.
 	ListObjects(ctx context.Context, bucketName string, opts minio.ListObjectsOptions) <-chan minio.ObjectInfo
 }
 
 // NewClient creates a new Minio client based on the configuration.
-func NewClient(cfg Config) (*minio.Client, error) {
+func NewClient(cfg Config) (Client, error) {
 	// Minio expects endpoint without scheme
 	endpoint := strings.TrimPrefix(cfg.Endpoint, "http://")
 	endpoint = strings.TrimPrefix(endpoint, "https://")
@@ -36,5 +38,13 @@ func NewClient(cfg Config) (*minio.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create minio client: %w", err)
 	}
-	return minioClient, nil
+	return &minioClientWrapper{Client: minioClient}, nil
+}
+
+type minioClientWrapper struct {
+	*minio.Client
+}
+
+func (c *minioClientWrapper) GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (io.ReadCloser, error) {
+	return c.Client.GetObject(ctx, bucketName, objectName, opts)
 }

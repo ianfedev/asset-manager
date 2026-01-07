@@ -34,3 +34,4 @@ logs
 
 playground/*
 assetm-manager
+*.json

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"asset-manager/core/storage/mocks"
+
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -11,7 +13,7 @@ import (
 
 func TestCheckGameData(t *testing.T) {
 	t.Run("GameData All Missing", func(t *testing.T) {
-		mockClient := new(MockClient)
+		mockClient := new(mocks.Client)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(true, nil)
 
 		ch := make(chan minio.ObjectInfo)
@@ -25,7 +27,7 @@ func TestCheckGameData(t *testing.T) {
 	})
 
 	t.Run("GameData All Present", func(t *testing.T) {
-		mockClient := new(MockClient)
+		mockClient := new(mocks.Client)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(true, nil)
 
 		for _, filename := range RequiredGameDataFiles {
