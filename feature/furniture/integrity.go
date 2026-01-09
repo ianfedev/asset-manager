@@ -2,20 +2,17 @@ package furniture
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
-
 	"sync"
 	"time"
-
-	"github.com/goccy/go-json"
 
 	"asset-manager/core/storage"
 	"asset-manager/feature/furniture/models"
 
 	"github.com/minio/minio-go/v7"
-	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
@@ -215,45 +212,23 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 		searchIdentifier = strings.TrimSuffix(identifier, ".nitro")
 	}
 
-	var (
-		furniData *models.FurnitureData
-		dbItem    *models.DBFurnitureItem
-	)
-
-	// 1. Parallel Fetch: Load FurniData and Check DB
-	g, ctxGroup := errgroup.WithContext(ctx)
-
-	// Fetch FurniData
-	g.Go(func() error {
-		var err error
-		furniData, err = loadFurnitureData(ctxGroup, client, bucket)
-		if err != nil {
-			return fmt.Errorf("failed to load FurnitureData: %w", err)
-		}
-		return nil
-	})
+	// Load FurniData
+	furniData, err := loadFurnitureData(ctx, client, bucket)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load FurnitureData: %w", err)
+	}
 
 	// Fetch DB Item (if db is present)
+	var dbItem *models.DBFurnitureItem
 	if db != nil && emulator != "" {
-		g.Go(func() error {
-			var err error
-			dbItem, err = GetDBFurnitureItem(db, emulator, searchIdentifier)
-			if err != nil && err != gorm.ErrRecordNotFound {
-				return fmt.Errorf("db lookup failed: %w", err)
-			}
-			// Ignore RecordNotFound here, treat as dbItem == nil
-			return nil
-		})
+		dbItem, err = GetDBFurnitureItem(db, emulator, searchIdentifier)
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("db lookup failed: %w", err)
+		}
 	}
 
-	// Wait for fetches
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	// 2. Find in FurniData
+	// Find in FurniData
 	var item *models.FurnitureItem
-	// Check by ID (if numeric)
 	var id int
 	isNumericId := false
 	if _, err := fmt.Sscanf(identifier, "%d", &id); err == nil && id > 0 {
@@ -266,11 +241,9 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 			if isNumericId && idx.ID == id {
 				return &idx
 			}
-			// Use searchIdentifier (cleaned) for comparison
 			if strings.EqualFold(idx.ClassName, searchIdentifier) {
 				return &idx
 			}
-			// Check if identifier matches name? Use cleaned just in case
 			if strings.EqualFold(idx.Name, searchIdentifier) {
 				return &idx
 			}
@@ -290,7 +263,6 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 		report.ClassName = item.ClassName
 		report.Name = item.Name
 
-		// Clean classname for file check
 		cleanName := item.ClassName
 		if idx := strings.Index(cleanName, "*"); idx != -1 {
 			cleanName = cleanName[:idx]
@@ -298,8 +270,6 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 		report.NitroFile = cleanName + ".nitro"
 	} else {
 		report.InFurniData = false
-		// If not in furnidata, we might still find it in DB or Storage if identifier was file/classname
-		// But if identifier was ID, we set it.
 		if isNumericId {
 			report.ID = id
 		} else {
@@ -308,7 +278,16 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 		}
 	}
 
-	// 3. Process DB Result (Already fetched)
+	// Retry DB lookup if failed but we have a valid ID from FurniData
+	if db != nil && emulator != "" && dbItem == nil && item != nil {
+		idStr := fmt.Sprintf("%d", item.ID)
+		retryItem, err := GetDBFurnitureItem(db, emulator, idStr)
+		if err == nil && retryItem != nil {
+			dbItem = retryItem
+		}
+	}
+
+	// Process DB Result
 	if db != nil && emulator != "" {
 		if dbItem != nil {
 			report.InDB = true
@@ -329,7 +308,6 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 
 			// Compare if we have both
 			if item != nil {
-				// We reuse the logic broadly, but focused.
 				if item.Name != dbItem.PublicName {
 					report.Mismatches = append(report.Mismatches, fmt.Sprintf("Name mismatch: FurniData='%s', DB='%s'", item.Name, dbItem.PublicName))
 				}
@@ -342,18 +320,17 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 				if item.YDim != dbItem.Length {
 					report.Mismatches = append(report.Mismatches, fmt.Sprintf("Length mismatch: FurniData=%d, DB=%d", item.YDim, dbItem.Length))
 				}
-				// Can add more detailed checks here if needed
 			}
 		} else {
 			report.InDB = false
 		}
 	}
 
-	// 4. Check Storage
+	// Check Storage
 	if report.NitroFile != "" {
 		filename := report.NitroFile
 		pathsToCheck := []string{
-			fmt.Sprintf("bundled/furniture/%s", filename), // Check flat path first
+			fmt.Sprintf("bundled/furniture/%s", filename),
 		}
 
 		if len(filename) > 0 {
@@ -366,7 +343,6 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 
 		foundFile := false
 		for _, path := range pathsToCheck {
-			// Check existence using ListObjects (StatObject not in interface)
 			opts := minio.ListObjectsOptions{
 				Prefix:    path,
 				Recursive: false,
