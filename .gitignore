@@ -33,5 +33,6 @@ logs/*
 logs
 
 playground/*
-assetm-manager
+asset-manager
+asset-manager.exe
 *.json

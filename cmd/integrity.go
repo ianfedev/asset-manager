@@ -15,7 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"golang.org/x/sys/unix"
+
 	"gorm.io/gorm"
 )
 
@@ -196,9 +196,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 	}
 
 	if runFurniture {
-		if err := unix.Access(".", unix.W_OK); err != nil {
-			logg.Fatal("Current directory is not writable. Cannot save integrity report.", zap.Error(err))
-		}
+		// Check write access by attempting to write? No, just proceed. os.WriteFile will handle errors.
 
 		logg.Info("Checking furniture assets (this might take a while)...")
 		report, err := svc.CheckFurniture(ctx, dbFlag)
