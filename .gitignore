@@ -38,3 +38,5 @@ asset-manager.exe
 
 # Swagger
 docs/swagger
+*.log
+*.json

@@ -29,6 +29,10 @@ func (h *Handler) RegisterRoutes(app fiber.Router) {
 	group.Get("/gamedata", h.HandleGameDataCheck)
 	group.Get("/furniture", h.HandleFurnitureCheck)
 	group.Get("/server", h.HandleServerCheck)
+
+	// Sync routes
+	syncGroup := app.Group("/sync")
+	syncGroup.Post("/furniture", h.HandleFurnitureSync)
 }
 
 // HandleIntegrityCheck triggers all integrity checks.
@@ -75,8 +79,8 @@ func (h *Handler) HandleIntegrityCheck(c *fiber.Ctx) error {
 		report["server"] = srvReport
 	}
 
-	// Furniture (Slow)
-	if furnReport, err := h.service.CheckFurniture(ctx, false); err != nil {
+	// Furniture (Slow, requires database)
+	if furnReport, err := h.service.CheckFurniture(ctx); err != nil {
 		report["furniture"] = map[string]interface{}{"status": "error", "error": err.Error()}
 	} else {
 		report["furniture"] = furnReport
@@ -201,11 +205,10 @@ func (h *Handler) HandleGameDataCheck(c *fiber.Ctx) error {
 
 // HandleFurnitureCheck checks integrity of bundled furniture assets.
 // @Summary Check Furniture Assets
-// @Description Perform deep integrity check on furniture assets in storage.
+// @Description Perform deep integrity check on furniture assets across FurniData, Storage, and Database
 // @Tags integrity
 // @Accept json
 // @Produce json
-// @Param db query boolean false "Check Database Integrity too"
 // @Success 200 {object} map[string]interface{} "Furniture Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity/furniture [get]
@@ -213,8 +216,7 @@ func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {
 	l := logger.WithRayID(h.service.logger, c)
 	l.Info("Starting furniture integrity check")
 
-	checkDB := c.Query("db") == "true"
-	report, err := h.service.CheckFurniture(c.Context(), checkDB)
+	report, err := h.service.CheckFurniture(c.Context())
 	if err != nil {
 		l.Error("Furniture check failed", zap.Error(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -223,8 +225,8 @@ func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {
 	}
 
 	l.Info("Furniture check completed",
-		zap.Int("expected", report.TotalExpected),
-		zap.Int("found", report.TotalFound))
+		zap.Int("total_assets", report.TotalAssets),
+		zap.Int("storage_missing", report.StorageMissing))
 
 	return c.JSON(report)
 }

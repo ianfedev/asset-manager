@@ -20,7 +20,7 @@ import (
 )
 
 var fixFlag bool
-var dbFlag bool
+var jsonFlag bool
 
 // integrityCmd represents the integrity command
 var integrityCmd = &cobra.Command{
@@ -91,7 +91,7 @@ func init() {
 
 	structureCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
 	bundleCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
-	furnitureCmd.Flags().BoolVar(&dbFlag, "db", false, "Check database integrity")
+	furnitureCmd.Flags().BoolVar(&jsonFlag, "json", false, "Output report as JSON to stdout")
 }
 
 func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGameData, onlyFurniture, onlyServer bool) {
@@ -196,30 +196,30 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 	}
 
 	if runFurniture {
-		// Check write access by attempting to write? No, just proceed. os.WriteFile will handle errors.
-
 		logg.Info("Checking furniture assets (this might take a while)...")
-		report, err := svc.CheckFurniture(ctx, dbFlag)
+		report, err := svc.CheckFurniture(ctx)
 		if err != nil {
 			logg.Fatal("Furniture check failed", zap.Error(err))
 		}
 
-		// Save Report
-		filename := fmt.Sprintf("integrity_furniture_%d.json", time.Now().Unix())
-		data, _ := json.MarshalIndent(report, "", "  ")
-		if err := os.WriteFile(filename, data, 0644); err != nil {
-			logg.Error("Failed to save integrity report", zap.Error(err))
-		} else {
-			logg.Info("Integrity report saved", zap.String("file", filename))
+		// Only save JSON report if --json flag is set
+		if onlyFurniture && jsonFlag {
+			filename := fmt.Sprintf("integrity_furniture_%d.json", time.Now().Unix())
+			data, _ := json.MarshalIndent(report, "", "  ")
+			if err := os.WriteFile(filename, data, 0644); err != nil {
+				logg.Error("Failed to save integrity report", zap.Error(err))
+			} else {
+				logg.Info("Integrity report saved", zap.String("file", filename))
+			}
 		}
 
+		// Always show console metrics
 		logg.Info("Furniture Integrity Report",
-			zap.Int("Expected", report.TotalExpected),
-			zap.Int("Found", report.TotalFound),
-			zap.Int("MissingAssets", len(report.MissingAssets)),
-			zap.Int("UnregisteredAssets", len(report.UnregisteredAssets)),
-			zap.Int("MalformedAssets", len(report.MalformedAssets)),
-			zap.Int("ParameterMismatches", len(report.ParameterMismatches)),
+			zap.Int("TotalAssets", report.TotalAssets),
+			zap.Int("StorageMissing", report.StorageMissing),
+			zap.Int("DatabaseMissing", report.DatabaseMissing),
+			zap.Int("FurniDataMissing", report.FurniDataMissing),
+			zap.Int("WithMismatches", report.WithMismatches),
 			zap.String("ExecutionTime", report.ExecutionTime),
 		)
 	}

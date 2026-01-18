@@ -12,7 +12,6 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	github.com/swaggo/swag v1.16.6
 	go.uber.org/zap v1.27.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.1
@@ -60,6 +59,7 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/swaggo/files/v2 v2.0.2 // indirect
+	github.com/swaggo/swag v1.16.6 // indirect
 	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect

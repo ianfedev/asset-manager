@@ -1,4 +1,4 @@
-package furniture
+package sync
 
 import (
 	"fmt"
