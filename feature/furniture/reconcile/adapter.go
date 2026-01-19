@@ -330,7 +330,9 @@ func (a *FurnitureAdapter) CompareFields(dbItem reconcile.DBItem, gdItem reconci
 	var mismatches []string
 
 	// Compare name
-	if db.PublicName != gd.Name {
+	// Relaxed check: Accept if DB PublicName matches GD Name OR GD ClassName
+	// (Common in emulators to use classname as public_name default)
+	if db.PublicName != gd.Name && db.PublicName != gd.ClassName {
 		mismatches = append(mismatches, fmt.Sprintf("name: gd='%s' db='%s'", gd.Name, db.PublicName))
 	}
 
